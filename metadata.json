@@ -1,0 +1,7 @@
+{
+  "name": "GlucoTrack AI",
+  "description": "A comprehensive blood glucose management system with AI-powered trend analysis, nutritional insights, and visual health tracking for diabetic patients.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
