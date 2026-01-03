@@ -24,6 +24,26 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export interface TherapySlot {
+  time: string;
+  label: string;
+  rows: {
+    range: string;
+    dose: string;
+    wait: string;
+  }[];
+  notes?: string;
+}
+
+export interface TherapyPlan {
+  longActingName: string;
+  longActingDose: string;
+  slots: TherapySlot[];
+  contacts: { label: string; number: string }[];
+  lastUpdate: string;
+}
+
+// Fix: Added missing MealItem interface to resolve import errors in geminiService and LogEntryForm
 export interface MealItem {
   name: string;
   portion: string;
@@ -34,9 +54,9 @@ export interface GlucoseLog {
   id: string;
   profileId: string;
   timestamp: string;
-  sensorLevel?: number; // mg/dL from Sensor
-  stickLevel?: number;  // mg/dL from Fingerstick
-  carbs: number; // grams
+  sensorLevel?: number;
+  stickLevel?: number;
+  carbs: number;
   insulinUnits: number;
   insulinType: InsulinType;
   mealType: MealType;
@@ -53,7 +73,7 @@ export interface AIInsight {
 
 export interface DashboardStats {
   averageLevel: number;
-  timeInRange: number; // percentage
+  timeInRange: number;
   hypoCount: number;
   hyperCount: number;
 }

@@ -4,21 +4,27 @@ import Layout from './components/Layout';
 import TrendChart from './components/TrendChart';
 import LogEntryForm from './components/LogEntryForm';
 import AuthView from './components/AuthView';
-import { GlucoseLog, DashboardStats, AIInsight, MealType, InsulinType, UserProfile } from './types';
+import TherapyView from './components/TherapyView';
+import LogsView from './components/LogsView';
+import HealthReport from './components/HealthReport';
+import { GlucoseLog, DashboardStats, AIInsight, MealType, InsulinType, UserProfile, TherapyPlan } from './types';
 import { GLUCOSE_THRESHOLDS } from './constants';
 import { analyzeGlucoseTrends, extractSensorDataFromImage } from './services/geminiService';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 
 const AppContent: React.FC = () => {
   const { t, language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'logs' | 'ai'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'logs' | 'ai' | 'therapy'>('dashboard');
   const [chartRange, setChartRange] = useState<'day' | 'week' | 'month'>('day');
   
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [logs, setLogs] = useState<GlucoseLog[]>([]);
+  const [therapyPlan, setTherapyPlan] = useState<TherapyPlan | undefined>(undefined);
+  
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<GlucoseLog | null>(null);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
   const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -44,14 +50,15 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!currentUser) {
       setLogs([]);
+      setTherapyPlan(undefined);
       return;
     }
     const savedLogs = localStorage.getItem(`glucoLogs_${currentUser.id}`);
-    if (savedLogs) {
-      setLogs(JSON.parse(savedLogs));
-    } else {
-      setLogs([]);
-    }
+    if (savedLogs) setLogs(JSON.parse(savedLogs));
+    
+    const savedPlan = localStorage.getItem(`glucoTherapy_${currentUser.id}`);
+    if (savedPlan) setTherapyPlan(JSON.parse(savedPlan));
+
     setAiInsight(null);
   }, [currentUser]);
 
@@ -59,6 +66,13 @@ const AppContent: React.FC = () => {
     if (!currentUser) return;
     localStorage.setItem(`glucoLogs_${currentUser.id}`, JSON.stringify(logs));
   }, [logs, currentUser]);
+
+  const handleSaveTherapy = (plan: TherapyPlan) => {
+    if (!currentUser) return;
+    setTherapyPlan(plan);
+    localStorage.setItem(`glucoTherapy_${currentUser.id}`, JSON.stringify(plan));
+    setNotification({ msg: "Piano Terapia salvato", type: 'success' });
+  };
 
   const stats: DashboardStats = useMemo(() => {
     if (logs.length === 0) return { averageLevel: 0, timeInRange: 0, hypoCount: 0, hyperCount: 0 };
@@ -137,6 +151,17 @@ const AppContent: React.FC = () => {
   const handleDeleteLog = (id: string) => {
     setLogs(prev => prev.filter(l => l.id !== id));
     setNotification({ msg: "Registro eliminato", type: 'success' });
+  };
+
+  const handleExportJson = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `glucoai_logs_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    setNotification({ msg: "JSON Export avviato", type: 'success' });
   };
 
   const handleQuickLog = (type: 'insulin' | 'carb' | 'check') => {
@@ -229,10 +254,15 @@ const AppContent: React.FC = () => {
   return (
     <Layout 
       activeTab={activeTab} 
-      onTabChange={setActiveTab}
+      onTabChange={(tab) => setActiveTab(tab)}
       currentUser={currentUser}
       onLogout={handleLogout}
       onEditProfile={() => setIsEditProfileOpen(true)}
+      extraTabs={
+        <button onClick={() => setActiveTab('therapy')} className={`w-full text-left px-6 py-4 rounded-xl transition-all flex items-center gap-4 border-2 ${activeTab === 'therapy' ? 'bg-indigo-600 text-white font-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'text-slate-400 border-transparent hover:bg-slate-50 hover:text-black'}`}>
+          <span className="text-xl">📋</span> <span className="uppercase text-[9px] font-black tracking-[0.2em]">{t('therapy')}</span>
+        </button>
+      }
     >
       {/* Dynamic Notifications */}
       {notification && (
@@ -241,115 +271,138 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
+      {isReportOpen && (
+        <HealthReport 
+          logs={filteredChartLogs} 
+          stats={stats} 
+          user={currentUser} 
+          range={chartRange} 
+          onClose={() => setIsReportOpen(false)} 
+        />
+      )}
+
+      {activeTab === 'therapy' && (
+        <TherapyView currentUser={currentUser} initialPlan={therapyPlan} onSave={handleSaveTherapy} />
+      )}
+
+      {activeTab === 'logs' && (
+        <LogsView 
+          logs={logs} 
+          onEdit={(log) => { setEditingLog(log); setIsFormOpen(true); }}
+          onDelete={handleDeleteLog}
+          onExportJson={handleExportJson}
+          onExportPdf={() => setIsReportOpen(true)}
+        />
+      )}
+
       {activeTab === 'dashboard' && (
         <div className="space-y-6 md:space-y-12 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b-2 border-slate-100 pb-8">
+          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-5 border-b-2 border-slate-100 pb-6 md:pb-8">
             <div className="space-y-1">
-              <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.4em] text-indigo-500">Live Health OS • v4.2</p>
-              <h1 className="text-4xl md:text-7xl font-black text-black tracking-tighter uppercase leading-none">{t('health_overview')}</h1>
+              <p className="text-[7px] md:text-[10px] font-black uppercase tracking-[0.4em] text-indigo-500">Live Health OS • v4.2</p>
+              <h1 className="text-3xl md:text-7xl font-black text-black tracking-tighter uppercase leading-none">{t('health_overview')}</h1>
             </div>
             <div className="flex flex-col gap-3 w-full md:w-auto">
               <div className="flex gap-2">
-                 <button onClick={() => handleQuickLog('insulin')} className="bg-rose-50 text-rose-600 border-2 border-rose-100 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-rose-100 transition-all">+1u Insulina</button>
-                 <button onClick={() => handleQuickLog('carb')} className="bg-amber-50 text-amber-600 border-2 border-amber-100 px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-amber-100 transition-all">+15g Carbs</button>
+                 <button onClick={() => handleQuickLog('insulin')} className="flex-1 md:flex-none bg-rose-50 text-rose-600 border-2 border-rose-100 px-3 md:px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-rose-100 transition-all">+1u Insulina</button>
+                 <button onClick={() => handleQuickLog('carb')} className="flex-1 md:flex-none bg-amber-50 text-amber-600 border-2 border-amber-100 px-3 md:px-4 py-2 rounded-xl text-[8px] font-black uppercase hover:bg-amber-100 transition-all">+15g Carbs</button>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setIsSyncOpen(true)} className="flex-1 md:flex-none bg-white border-2 border-black text-black px-6 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 transition-all">
+                <button onClick={() => setIsSyncOpen(true)} className="flex-1 md:flex-none bg-white border-2 border-black text-black px-4 md:px-6 py-3 md:py-4 rounded-xl font-black uppercase text-[9px] md:text-[10px] tracking-widest shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 transition-all">
                   📡 {t('sync_sensor')}
                 </button>
-                <button onClick={() => { setEditingLog(null); setIsFormOpen(true); }} className="flex-1 md:flex-none bg-indigo-600 text-white px-8 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-2 border-black">
+                <button onClick={() => { setEditingLog(null); setIsFormOpen(true); }} className="flex-1 md:flex-none bg-indigo-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-xl font-black uppercase text-[9px] md:text-[10px] tracking-widest shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] border-2 border-black">
                   + {t('add_entry')}
                 </button>
               </div>
             </div>
           </header>
 
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8">
             <StatCard label={t('avg_glucose')} value={`${stats.averageLevel}`} unit="mg/dL" color="indigo" icon="🩸" />
             <StatCard label={t('time_in_range')} value={`${stats.timeInRange}%`} unit="T.I.R." color="emerald" icon="🎯" />
             <StatCard label={t('hypo_events')} value={`${stats.hypoCount}`} unit="Events" color="rose" icon="⚠️" />
             <StatCard label={t('hyper_events')} value={`${stats.hyperCount}`} unit="Events" color="amber" icon="⚡" />
           </section>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-white p-6 md:p-10 rounded-[2.5rem] border-2 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,0.03)] flex flex-col">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="w-2 h-8 bg-indigo-600 rounded-full"></span>
-                  <h3 className="font-black uppercase text-[10px] tracking-[0.4em] text-black">{t('glucose_trends')}</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+            <div className="lg:col-span-2 bg-white p-4 md:p-10 rounded-[2rem] md:rounded-[2.5rem] border-2 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,0.02)] flex flex-col">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-10 gap-3 md:gap-4">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <span className="w-1.5 h-6 md:w-2 md:h-8 bg-indigo-600 rounded-full"></span>
+                  <h3 className="font-black uppercase text-[9px] md:text-[10px] tracking-[0.3em] text-black">{t('glucose_trends')}</h3>
                 </div>
                 
-                {/* Range Selector */}
-                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border-2 border-black/5 self-end sm:self-center">
+                <div className="flex gap-1 bg-slate-50 p-1 rounded-xl border-2 border-black/5 w-full sm:w-auto overflow-x-auto no-scrollbar">
                   {(['day', 'week', 'month'] as const).map((r) => (
                     <button 
                       key={r}
                       onClick={() => setChartRange(r)}
-                      className={`px-3 py-1.5 text-[8px] font-black rounded-lg transition-all uppercase tracking-widest ${chartRange === r ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'text-slate-400 hover:text-black'}`}
+                      className={`flex-1 sm:flex-none whitespace-nowrap px-3 py-1.5 text-[8px] font-black rounded-lg transition-all uppercase tracking-widest ${chartRange === r ? 'bg-white border-2 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'text-slate-400 hover:text-black'}`}
                     >
                       {t(`range_${r}` as any)}
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="h-72 md:h-96">
+              <div className="h-64 md:h-96">
                 <TrendChart logs={filteredChartLogs} range={chartRange} />
               </div>
             </div>
 
-            <div className="bg-black text-white p-10 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between border-4 border-black shadow-[16px_16px_0px_0px_rgba(79,70,229,0.15)]">
-              <div className="relative z-10 space-y-6">
-                <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl font-black border-2 border-white/20">AI</div>
-                <h3 className="text-3xl font-black uppercase leading-none tracking-tighter">{t('smart_analysis')}</h3>
-                <p className="text-slate-400 text-[10px] font-bold leading-relaxed">{t('smart_analysis_desc')}</p>
+            <div className="bg-black text-white p-8 md:p-10 rounded-[2rem] md:rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between border-4 border-black shadow-[16px_16px_0px_0px_rgba(79,70,229,0.1)]">
+              <div className="relative z-10 space-y-4 md:space-y-6">
+                <div className="w-12 h-12 md:w-14 md:h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-xl md:text-2xl font-black border-2 border-white/20">AI</div>
+                <h3 className="text-2xl md:text-3xl font-black uppercase leading-none tracking-tighter">{t('smart_analysis')}</h3>
+                <p className="text-slate-400 text-[9px] md:text-[10px] font-bold leading-relaxed">{t('smart_analysis_desc')}</p>
                 
-                <div className="pt-4 space-y-3">
-                   <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">Neural Engine Active</span>
+                <div className="pt-2 md:pt-4 space-y-3">
+                   <div className="flex items-center gap-2 bg-white/5 p-3 rounded-xl">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-300">Neural Engine Active</span>
                    </div>
                 </div>
               </div>
-              <button onClick={() => setActiveTab('ai')} className="relative z-10 w-full bg-indigo-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all mt-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(255,255,255,0.1)]">
+              <button onClick={() => setActiveTab('ai')} className="relative z-10 w-full bg-indigo-600 text-white py-4 md:py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all mt-6 md:mt-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(255,255,255,0.1)]">
                 {t('view_insights')} →
               </button>
             </div>
           </div>
 
-          <section className="bg-white p-8 md:p-12 rounded-[2.5rem] border-2 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,0.03)]">
-             <div className="flex items-center justify-between mb-10">
-                <h3 className="font-black uppercase text-[10px] tracking-[0.4em] text-black">{t('recent_activity')}</h3>
-                <button onClick={() => setActiveTab('logs')} className="text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:underline">Full History</button>
+          <section className="bg-white p-6 md:p-12 rounded-[2rem] md:rounded-[2.5rem] border-2 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,0.02)]">
+             <div className="flex items-center justify-between mb-8 md:mb-10">
+                <h3 className="font-black uppercase text-[9px] md:text-[10px] tracking-[0.3em] text-black">{t('recent_activity')}</h3>
+                <button onClick={() => setActiveTab('logs')} className="text-[8px] md:text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:underline">Full History</button>
              </div>
-             <div className="space-y-4">
+             <div className="space-y-3 md:space-y-4">
                {logs.length === 0 ? (
-                 <div className="py-20 text-center space-y-4">
-                    <p className="text-slate-200 text-5xl opacity-30">📭</p>
-                    <p className="text-slate-300 uppercase text-[10px] font-black tracking-[0.5em]">No Data Synced</p>
+                 <div className="py-16 md:py-20 text-center space-y-4">
+                    <p className="text-slate-200 text-4xl md:text-5xl opacity-30">📭</p>
+                    <p className="text-slate-300 uppercase text-[9px] md:text-[10px] font-black tracking-[0.4em]">No Data Synced</p>
                  </div>
                ) : (
                  logs.slice(0, 5).map(log => {
                    const val = log.sensorLevel || log.stickLevel || 0;
                    const status = val > GLUCOSE_THRESHOLDS.HYPER ? 'hyper' : val < GLUCOSE_THRESHOLDS.HYPO ? 'hypo' : 'normal';
                    return (
-                    <div key={log.id} className="flex items-center gap-5 md:gap-8 p-6 hover:bg-indigo-50/50 rounded-3xl transition-all border-2 border-transparent hover:border-slate-100 group">
-                        <div className={`w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl md:text-2xl border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${status === 'hyper' ? 'bg-amber-400 border-black text-black' : status === 'hypo' ? 'bg-rose-500 border-black text-white' : 'bg-emerald-400 border-black text-black'}`}>
+                    <div key={log.id} className="flex items-center gap-4 md:gap-8 p-4 md:p-6 hover:bg-slate-50 rounded-2xl md:rounded-3xl transition-all border-2 border-transparent hover:border-black/5 group">
+                        <div className={`w-12 h-12 md:w-20 md:h-20 shrink-0 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-lg md:text-2xl border-2 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${status === 'hyper' ? 'bg-amber-400 border-black text-black' : status === 'hypo' ? 'bg-rose-500 border-black text-white' : 'bg-emerald-400 border-black text-black'}`}>
                           {val}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-black text-black uppercase text-[11px] md:text-sm tracking-tight truncate">{getMealLabel(log.mealType)}</p>
-                          <div className="flex items-center flex-wrap gap-y-1 gap-x-4 mt-1.5">
-                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                          <p className="font-black text-black uppercase text-[10px] md:text-sm tracking-tight truncate">{getMealLabel(log.mealType)}</p>
+                          <div className="flex items-center flex-wrap gap-y-1 gap-x-3 md:gap-x-4 mt-1 md:mt-1.5">
+                             <p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
                                 🕒 {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                              </p>
                              <div className="flex gap-2">
-                               {log.insulinUnits > 0 && <span className="bg-rose-50 text-rose-500 px-2 py-0.5 rounded text-[8px] font-black uppercase">{log.insulinUnits}u Ins</span>}
-                               {log.carbs > 0 && <span className="bg-amber-50 text-amber-500 px-2 py-0.5 rounded text-[8px] font-black uppercase">{log.carbs}g Cho</span>}
+                               {log.insulinUnits > 0 && <span className="bg-rose-50 text-rose-500 px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] font-black uppercase">{log.insulinUnits}u Ins</span>}
+                               {log.carbs > 0 && <span className="bg-amber-50 text-amber-500 px-1.5 md:px-2 py-0.5 rounded text-[7px] md:text-[8px] font-black uppercase">{log.carbs}g Cho</span>}
                              </div>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                           <button onClick={() => { setEditingLog(log); setIsFormOpen(true); }} className="w-10 h-10 bg-white border-2 border-black rounded-xl flex items-center justify-center hover:bg-black hover:text-white transition-all">✏️</button>
+                           <button onClick={() => { setEditingLog(log); setIsFormOpen(true); }} className="w-8 h-8 md:w-10 md:h-10 bg-white border-2 border-black rounded-lg md:rounded-xl flex items-center justify-center hover:bg-black hover:text-white transition-all text-xs">✏️</button>
                         </div>
                     </div>
                    );
@@ -361,9 +414,6 @@ const AppContent: React.FC = () => {
       )}
 
       {isFormOpen && <LogEntryForm editingLog={editingLog} onAddLog={handleAddLog} onUpdateLog={handleUpdateLog} onClose={() => setIsFormOpen(false)} />}
-      
-      {/* Resto del codice identico */}
-      {activeTab === 'logs' && <div className="p-10 text-center font-black uppercase text-indigo-400">Log History View (Omitted for brevity)</div>}
       {activeTab === 'ai' && <div className="p-10 text-center font-black uppercase text-indigo-400">AI Insights View (Omitted for brevity)</div>}
     </Layout>
   );
@@ -379,14 +429,14 @@ const StatCard: React.FC<{ label: string; value: string; unit: string; color: st
   const theme = colorMap[color] || colorMap.indigo;
   
   return (
-    <div className={`${theme.bg} p-6 md:p-10 rounded-[2rem] border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all group relative overflow-hidden`}>
-      <div className="relative z-10 flex justify-between items-start mb-4 md:mb-8">
-        <p className={`text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] ${theme.text} truncate pr-1`}>{label}</p>
-        <div className={`w-10 h-10 ${theme.bg} border-2 border-black rounded-xl flex items-center justify-center text-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`}>{icon}</div>
+    <div className={`${theme.bg} p-4 md:p-10 rounded-[1.5rem] md:rounded-[2rem] border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all group relative overflow-hidden`}>
+      <div className="relative z-10 flex justify-between items-start mb-2 md:mb-8">
+        <p className={`text-[7px] md:text-[10px] font-black uppercase tracking-tight md:tracking-[0.2em] ${theme.text} truncate pr-1`}>{label}</p>
+        <div className={`w-8 h-8 md:w-10 md:h-10 ${theme.bg} border-2 border-black rounded-lg md:rounded-xl flex items-center justify-center text-sm md:text-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] shrink-0`}>{icon}</div>
       </div>
-      <div className="relative z-10 flex items-baseline gap-2">
-        <span className="text-3xl md:text-6xl font-black tracking-tighter text-black">{value}</span>
-        <span className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">{unit}</span>
+      <div className="relative z-10 flex items-baseline gap-1 md:gap-2">
+        <span className="text-2xl md:text-6xl font-black tracking-tighter text-black">{value}</span>
+        <span className="text-[7px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">{unit}</span>
       </div>
     </div>
   );

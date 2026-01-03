@@ -6,11 +6,12 @@ import { UserProfile } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
-  activeTab: 'dashboard' | 'logs' | 'ai';
-  onTabChange: (tab: 'dashboard' | 'logs' | 'ai') => void;
+  activeTab: 'dashboard' | 'logs' | 'ai' | 'therapy';
+  onTabChange: (tab: 'dashboard' | 'logs' | 'ai' | 'therapy') => void;
   currentUser: UserProfile;
   onLogout: () => void;
   onEditProfile: () => void;
+  extraTabs?: React.ReactNode;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
@@ -19,7 +20,8 @@ const Layout: React.FC<LayoutProps> = ({
   onTabChange, 
   currentUser,
   onLogout,
-  onEditProfile
+  onEditProfile,
+  extraTabs
 }) => {
   const { language, setLanguage, t } = useLanguage();
 
@@ -43,9 +45,9 @@ const Layout: React.FC<LayoutProps> = ({
   );
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#FFFFFF] text-black">
+    <div className="min-h-screen flex flex-col md:flex-row bg-white text-black overflow-x-hidden">
       {/* Sidebar - Desktop */}
-      <aside className="hidden md:flex w-80 bg-white border-r-4 border-black flex-col p-8 sticky top-0 h-screen overflow-y-auto">
+      <aside className="hidden md:flex w-80 bg-white border-r-4 border-black flex-col p-8 sticky top-0 h-screen overflow-y-auto print:hidden">
         <div className="flex items-center gap-4 mb-12">
             <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-3xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rotate-3">G</div>
             <div className="flex flex-col">
@@ -87,6 +89,7 @@ const Layout: React.FC<LayoutProps> = ({
           <button onClick={() => onTabChange('ai')} className={`w-full text-left px-6 py-4 rounded-xl transition-all flex items-center gap-4 border-2 ${activeTab === 'ai' ? 'bg-indigo-600 text-white font-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'text-slate-400 border-transparent hover:bg-slate-50 hover:text-black'}`}>
             <span className="text-xl">🤖</span> <span className="uppercase text-[9px] font-black tracking-[0.2em]">{t('ai_coach')}</span>
           </button>
+          {extraTabs}
         </nav>
 
         <div className="mt-auto pt-8 space-y-6">
@@ -105,31 +108,56 @@ const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-5 md:p-14 overflow-y-auto pb-40 md:pb-14 bg-white">
+      <main className="flex-1 p-4 sm:p-6 md:p-14 overflow-y-auto pb-24 md:pb-14 bg-white print:p-0">
         {children}
       </main>
 
-      {/* Mobile Nav - Native App Look */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t-4 border-black flex justify-around items-center h-24 z-[500] px-6">
-        <button onClick={() => onTabChange('dashboard')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'dashboard' ? 'text-indigo-600 font-black -translate-y-2' : 'text-slate-300'}`}>
-          <div className={`text-2xl w-12 h-12 flex items-center justify-center rounded-2xl ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}>📊</div>
-          <span className="text-[8px] font-black uppercase">Dash</span>
-        </button>
-        <button onClick={() => onTabChange('logs')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'logs' ? 'text-indigo-600 font-black -translate-y-2' : 'text-slate-300'}`}>
-          <div className={`text-2xl w-12 h-12 flex items-center justify-center rounded-2xl ${activeTab === 'logs' ? 'bg-indigo-600 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}>📓</div>
-          <span className="text-[8px] font-black uppercase">Logs</span>
-        </button>
-        <button onClick={() => onTabChange('ai')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'ai' ? 'text-indigo-600 font-black -translate-y-2' : 'text-slate-300'}`}>
-          <div className={`text-2xl w-12 h-12 flex items-center justify-center rounded-2xl ${activeTab === 'ai' ? 'bg-indigo-600 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : ''}`}>🤖</div>
-          <span className="text-[8px] font-black uppercase">Coach</span>
-        </button>
-        <button onClick={onLogout} className="flex flex-col items-center gap-1 p-2 text-rose-500">
-          <div className="text-2xl">🚪</div>
-          <span className="text-[8px] font-black uppercase">Exit</span>
-        </button>
+      {/* Mobile Nav - Optimized for visibility and thumb reach */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t-[3px] border-black flex justify-around items-end h-[74px] pb-[env(safe-area-inset-bottom,12px)] z-[500] px-2 print:hidden shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+        <MobileNavItem 
+          active={activeTab === 'dashboard'} 
+          onClick={() => onTabChange('dashboard')} 
+          icon="📊" 
+          label="Dash" 
+        />
+        <MobileNavItem 
+          active={activeTab === 'logs'} 
+          onClick={() => onTabChange('logs')} 
+          icon="📓" 
+          label="Logs" 
+        />
+        <MobileNavItem 
+          active={activeTab === 'therapy'} 
+          onClick={() => onTabChange('therapy')} 
+          icon="📋" 
+          label="Plan" 
+        />
+        <MobileNavItem 
+          active={activeTab === 'ai'} 
+          onClick={() => onTabChange('ai')} 
+          icon="🤖" 
+          label="AI" 
+        />
       </nav>
     </div>
   );
 };
+
+const MobileNavItem: React.FC<{ active: boolean; onClick: () => void; icon: string; label: string }> = ({ active, onClick, icon, label }) => (
+  <button 
+    onClick={onClick} 
+    className={`flex-1 flex flex-col items-center justify-center h-full transition-all duration-300 relative ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+  >
+    <div className={`text-xl md:text-2xl transition-all duration-300 transform ${active ? 'scale-110 -translate-y-2' : 'scale-100'}`}>
+      <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${active ? 'bg-indigo-600 text-white border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]' : ''}`}>
+        {icon}
+      </div>
+    </div>
+    <span className={`text-[7px] font-black uppercase tracking-widest mt-1 transition-opacity duration-300 ${active ? 'opacity-100' : 'opacity-60'}`}>
+      {label}
+    </span>
+    {active && <div className="absolute bottom-1 w-1 h-1 bg-indigo-600 rounded-full"></div>}
+  </button>
+);
 
 export default Layout;
